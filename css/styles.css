@@ -68,11 +68,17 @@ canvas {
   position: relative;
   z-index: 2;
 }
+#overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
 #hud {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 3;
+  z-index: 4;
 }
 .hud-box {
   position: absolute;
@@ -156,7 +162,7 @@ canvas {
   box-shadow: 0 0 40px rgba(0, 255, 255, 0.1);
   padding: 18px 18px 16px;
   pointer-events: none;
-  z-index: 4;
+  z-index: 5;
 }
 #perm h1 {
   font-size: 14px;
