@@ -29,7 +29,7 @@
         <div class="hud-box tr"><b>Particles</b> <span id="pc">12000</span></div>
         <div class="hud-box bl">
           <b>Left</b> <span id="lhs">OFF</span><br />
-          <b>Cmd</b> <span id="cmd">HELLO</span>
+          <b>Cmd</b> <span id="cmd">OLA</span>
         </div>
         <div class="hud-box br">
           <b>Right</b> <span id="rhs">OFF</span><br />
@@ -104,7 +104,7 @@
         camera.position.set(0, 0, 900);
 
         const state = {
-          shapeText: "Hello",
+          shapeText: "Olá",
           shapeColor: neon.blue,
           left: null,
           right: null,
@@ -339,7 +339,7 @@
           applyTextTargets();
         }
 
-        setModeText("Hello", neon.blue, "HELLO");
+        setModeText("Olá", neon.blue, "OLA");
 
         function enterNebula() {
           state.nebulaActive = true;
@@ -558,10 +558,10 @@
 
           if (!state.ultimateActive) {
             if (leftOk && !leftOpen) {
-              if (state.leftFingers === 1 && state.shapeText !== "Hello") setModeText("Hello", neon.blue, "HELLO");
-              if (state.leftFingers === 2 && state.shapeText !== "Gemini3") setModeText("Gemini3", neon.yellow, "GEMINI3");
-              if (state.leftFingers === 3 && state.shapeText !== "非常好用") setModeText("非常好用", neon.pink, "CN-USEFUL");
-              if (state.leftFingers === 4 && state.shapeText !== "再见") setModeText("再见", neon.green, "CN-BYE");
+              if (state.leftFingers === 1 && state.shapeText !== "Olá") setModeText("Olá", neon.blue, "OLA");
+              if (state.leftFingers === 2 && state.shapeText !== "Sou Alexandre") setModeText("Sou Alexandre", neon.yellow, "ALEXANDRE");
+              if (state.leftFingers === 3 && state.shapeText !== "Como vai?") setModeText("Como vai?", neon.pink, "COMO VAI");
+              if (state.leftFingers === 4 && state.shapeText !== "Projeto com IA") setModeText("Projeto com IA", neon.green, "IA");
             }
           }
 

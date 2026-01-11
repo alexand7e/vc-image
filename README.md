@@ -24,10 +24,10 @@ npx serve .
 ## Controles (gestos)
 
 ### Mão esquerda (comando)
-- 1 dedo: “Hello” (ciano neon)
-- 2 dedos: “Gemini3” (amarelo neon)
-- 3 dedos: “非常好用” (rosa neon)
-- 4 dedos: “再见” (verde neon)
+- 1 dedo: “Olá” (ciano neon)
+- 2 dedos: “Sou Alexandre” (amarelo neon)
+- 3 dedos: “Como vai?” (rosa neon)
+- 4 dedos: “Projeto com IA” (verde neon)
 - 5 dedos: **Modo Captura** (atração para a palma esquerda)
 
 ### Mão direita (interação)
