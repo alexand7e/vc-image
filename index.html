@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cyberpunk Hand Particles</title>
+    <meta name="description" content="Mini-projeto Three.js + MediaPipe Hands: partículas cyberpunk interativas controladas por gestos." />
+    <meta name="theme-color" content="#00ffff" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="manifest" href="assets/manifest.webmanifest" />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/icon.svg" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="c"></canvas>
+      <video id="video" playsinline></video>
+      <div id="hud">
+        <div class="hud-box tl">
+          <b>FPS</b> <span id="fps">--</span><br />
+          <label class="hud-toggle">
+            <input id="toggle-bg" type="checkbox" />
+            <span>CAM FUNDO</span>
+          </label>
+        </div>
+        <div class="hud-box tr"><b>Particles</b> <span id="pc">12000</span></div>
+        <div class="hud-box bl">
+          <b>Left</b> <span id="lhs">OFF</span><br />
+          <b>Cmd</b> <span id="cmd">HELLO</span>
+        </div>
+        <div class="hud-box br">
+          <b>Right</b> <span id="rhs">OFF</span><br />
+          <b>Mode</b> <span id="mode">TEXT</span>
+        </div>
+      </div>
+      <div id="perm">
+        <h1>CAMERA INPUT REQUIRED</h1>
+        <p>Allow webcam access to enable MediaPipe Hands control.</p>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+    <script>
+      (async () => {
+        const PARTICLE_COUNT = 12000;
+        const PARTICLE_SIZE = 2.4;
+        const RETURN_LERP = 0.16;
+
+        const neon = {
+          blue: 0x00ffff,
+          yellow: 0xffff00,
+          pink: 0xff00ff,
+          green: 0x00ff88,
+          orange: 0xff8a00,
+          black: 0x070707,
+        };
+
+        const dom = {
+          app: document.getElementById("app"),
+          canvas: document.getElementById("c"),
+          video: document.getElementById("video"),
+          fps: document.getElementById("fps"),
+          pc: document.getElementById("pc"),
+          lhs: document.getElementById("lhs"),
+          rhs: document.getElementById("rhs"),
+          cmd: document.getElementById("cmd"),
+          mode: document.getElementById("mode"),
+          perm: document.getElementById("perm"),
+          toggleBg: document.getElementById("toggle-bg"),
+        };
+
+        dom.pc.textContent = String(PARTICLE_COUNT);
+
+        const ui = {
+          camBg: false,
+        };
+        if (dom.toggleBg) {
+          dom.toggleBg.checked = false;
+          dom.toggleBg.addEventListener("change", () => {
+            ui.camBg = dom.toggleBg.checked;
+            if (ui.camBg) dom.app.classList.add("show-cam");
+            else dom.app.classList.remove("show-cam");
+          });
+        }
+
+        const renderer = new THREE.WebGLRenderer({
+          canvas: dom.canvas,
+          antialias: false,
+          alpha: true,
+          powerPreference: "high-performance",
+          preserveDrawingBuffer: false,
+        });
+        renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        renderer.setClearColor(0x000000, 0);
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 4000);
+        camera.position.set(0, 0, 900);
+
+        const state = {
+          shapeText: "Hello",
+          shapeColor: neon.blue,
+          left: null,
+          right: null,
+          leftFingers: 0,
+          rightFingers: 0,
+          catchActive: false,
+          nebulaActive: false,
+          ultimateActive: false,
+          hasCam: false,
+        };
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(PARTICLE_COUNT * 3);
+        const velocities = new Float32Array(PARTICLE_COUNT * 3);
+        const targets = new Float32Array(PARTICLE_COUNT * 3);
+        const colors = new Float32Array(PARTICLE_COUNT * 3);
+
+        const baseBallDirs = new Float32Array(PARTICLE_COUNT * 3);
+        const ballLineMask = new Uint8Array(PARTICLE_COUNT);
+
+        const colorTmp = new THREE.Color();
+        const vecTmpA = new THREE.Vector3();
+        const vecTmpB = new THREE.Vector3();
+
+        function setAllColorsHex(hex) {
+          colorTmp.setHex(hex);
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const k = i * 3;
+            colors[k] = colorTmp.r;
+            colors[k + 1] = colorTmp.g;
+            colors[k + 2] = colorTmp.b;
+          }
+          geometry.attributes.color.needsUpdate = true;
+        }
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const k = i * 3;
+          positions[k] = (Math.random() - 0.5) * 50;
+          positions[k + 1] = (Math.random() - 0.5) * 50;
+          positions[k + 2] = (Math.random() - 0.5) * 5;
+          velocities[k] = 0;
+          velocities[k + 1] = 0;
+          velocities[k + 2] = 0;
+          targets[k] = 0;
+          targets[k + 1] = 0;
+          targets[k + 2] = 0;
+        }
+
+        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.ShaderMaterial({
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          uniforms: {
+            uSize: { value: PARTICLE_SIZE },
+            uTime: { value: 0 },
+          },
+          vertexShader: `
+            uniform float uSize;
+            uniform float uTime;
+            attribute vec3 color;
+            varying vec3 vColor;
+            void main() {
+              vColor = color;
+              vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+              float size = uSize * (380.0 / max(120.0, -mvPosition.z));
+              gl_PointSize = clamp(size, 1.0, 8.0);
+              gl_Position = projectionMatrix * mvPosition;
+            }
+          `,
+          fragmentShader: `
+            precision highp float;
+            varying vec3 vColor;
+            void main() {
+              vec2 uv = gl_PointCoord - 0.5;
+              float d = length(uv);
+              float core = smoothstep(0.28, 0.0, d);
+              float glow = smoothstep(0.5, 0.1, d);
+              float a = core * 0.9 + glow * 0.35;
+              gl_FragColor = vec4(vColor, a);
+            }
+          `,
+        });
+
+        const points = new THREE.Points(geometry, material);
+        scene.add(points);
+
+        setAllColorsHex(state.shapeColor);
+
+        function planeHalfExtentsAtZ(z) {
+          const dist = camera.position.z - z;
+          const halfH = Math.tan((camera.fov * Math.PI) / 360) * dist;
+          return { halfW: halfH * camera.aspect, halfH };
+        }
+
+        function normToPlaneWorld(xN, yN, z) {
+          const { halfW, halfH } = planeHalfExtentsAtZ(z);
+          return {
+            x: (xN - 0.5) * 2 * halfW,
+            y: (0.5 - yN) * 2 * halfH,
+            z,
+          };
+        }
+
+        const textCanvas = document.createElement("canvas");
+        const textCtx = textCanvas.getContext("2d", { willReadFrequently: true });
+        textCanvas.width = 900;
+        textCanvas.height = 320;
+
+        let textPoints = [];
+        function buildTextPoints(text) {
+          const w = textCanvas.width;
+          const h = textCanvas.height;
+          textCtx.clearRect(0, 0, w, h);
+          textCtx.fillStyle = "rgba(0,0,0,0)";
+          textCtx.fillRect(0, 0, w, h);
+          textCtx.font = "800 75px Orbitron, ui-monospace, monospace";
+          textCtx.textAlign = "center";
+          textCtx.textBaseline = "middle";
+          textCtx.fillStyle = "rgba(255,255,255,1)";
+          textCtx.fillText(text, w / 2, h / 2);
+
+          const img = textCtx.getImageData(0, 0, w, h).data;
+          const pts = [];
+          const step = 3;
+          for (let y = 0; y < h; y += step) {
+            for (let x = 0; x < w; x += step) {
+              const a = img[(y * w + x) * 4 + 3];
+              if (a > 40) pts.push({ x, y });
+            }
+          }
+
+          let minX = Infinity,
+            maxX = -Infinity,
+            minY = Infinity,
+            maxY = -Infinity;
+          for (let i = 0; i < pts.length; i++) {
+            const p = pts[i];
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+          }
+          const cx = (minX + maxX) * 0.5;
+          const cy = (minY + maxY) * 0.5;
+
+          const { halfW, halfH } = planeHalfExtentsAtZ(0);
+          const scale = Math.min(halfW * 1.55, halfH * 1.1) / Math.max(maxX - minX, maxY - minY);
+
+          const out = new Array(pts.length);
+          for (let i = 0; i < pts.length; i++) {
+            const p = pts[i];
+            out[i] = {
+              x: (p.x - cx) * scale,
+              y: (cy - p.y) * scale,
+            };
+          }
+          return out;
+        }
+
+        function applyTextTargets() {
+          if (!textPoints.length) textPoints = buildTextPoints(state.shapeText);
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const k = i * 3;
+            const p = textPoints[i % textPoints.length];
+            targets[k] = p.x;
+            targets[k + 1] = p.y;
+            targets[k + 2] = 0;
+          }
+        }
+
+        function applyNebulaTargets() {
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const k = i * 3;
+            const z = (Math.random() - 0.5) * 700;
+            const { halfW, halfH } = planeHalfExtentsAtZ(z);
+            targets[k] = (Math.random() * 2 - 1) * halfW;
+            targets[k + 1] = (Math.random() * 2 - 1) * halfH;
+            targets[k + 2] = z;
+          }
+        }
+
+        function buildBasketballBase() {
+          const n1 = new THREE.Vector3(0, 1, 0);
+          const n2 = new THREE.Vector3(1, 0, 1).normalize();
+          const n3 = new THREE.Vector3(1, 0, -1).normalize();
+          const seamT = 0.06;
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const t = (i + 0.5) / PARTICLE_COUNT;
+            const phi = Math.acos(1 - 2 * t);
+            const theta = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5);
+            const sx = Math.sin(phi) * Math.cos(theta);
+            const sy = Math.cos(phi);
+            const sz = Math.sin(phi) * Math.sin(theta);
+            const k = i * 3;
+            baseBallDirs[k] = sx;
+            baseBallDirs[k + 1] = sy;
+            baseBallDirs[k + 2] = sz;
+
+            const u = vecTmpA.set(sx, sy, sz);
+            const d1 = Math.abs(u.dot(n1));
+            const d2 = Math.abs(u.dot(n2));
+            const d3 = Math.abs(u.dot(n3));
+            const isSeam = d1 < seamT || d2 < seamT || d3 < seamT;
+            ballLineMask[i] = isSeam ? 1 : 0;
+          }
+        }
+
+        function applyBasketballColors() {
+          const cOrange = new THREE.Color(neon.orange);
+          const cBlack = new THREE.Color(neon.black);
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const k = i * 3;
+            const c = ballLineMask[i] ? cBlack : cOrange;
+            colors[k] = c.r;
+            colors[k + 1] = c.g;
+            colors[k + 2] = c.b;
+          }
+          geometry.attributes.color.needsUpdate = true;
+        }
+
+        buildBasketballBase();
+
+        function setModeText(text, colorHex, cmdLabel) {
+          state.shapeText = text;
+          state.shapeColor = colorHex;
+          dom.cmd.textContent = cmdLabel;
+          textPoints = buildTextPoints(text);
+          setAllColorsHex(colorHex);
+          applyTextTargets();
+        }
+
+        setModeText("Hello", neon.blue, "HELLO");
+
+        function enterNebula() {
+          state.nebulaActive = true;
+          dom.mode.textContent = "NEBULA";
+          applyNebulaTargets();
+        }
+
+        function exitNebula() {
+          state.nebulaActive = false;
+          dom.mode.textContent = state.catchActive ? "CATCH" : "TEXT";
+          setAllColorsHex(state.shapeColor);
+          applyTextTargets();
+        }
+
+        function enterUltimate() {
+          state.ultimateActive = true;
+          dom.mode.textContent = "ULTIMATE";
+          applyBasketballColors();
+        }
+
+        function exitUltimate() {
+          state.ultimateActive = false;
+          setAllColorsHex(state.shapeColor);
+          if (state.nebulaActive) {
+            dom.mode.textContent = "NEBULA";
+          } else {
+            dom.mode.textContent = state.catchActive ? "CATCH" : "TEXT";
+            applyTextTargets();
+          }
+        }
+
+        function countFingers(lm, handednessLabel) {
+          const tipIds = [4, 8, 12, 16, 20];
+          const pipIds = [3, 6, 10, 14, 18];
+          let count = 0;
+          const thumbTip = lm[tipIds[0]];
+          const thumbIp = lm[pipIds[0]];
+          const thumbExtended =
+            handednessLabel === "Left" ? thumbTip.x > thumbIp.x + 0.02 : thumbTip.x < thumbIp.x - 0.02;
+          if (thumbExtended) count++;
+          for (let i = 1; i < 5; i++) {
+            const tip = lm[tipIds[i]];
+            const pip = lm[pipIds[i]];
+            if (tip.y < pip.y - 0.02) count++;
+          }
+          return count;
+        }
+
+        function palmCenterWorld(lm) {
+          const ids = [0, 5, 9, 13, 17];
+          let x = 0;
+          let y = 0;
+          for (let i = 0; i < ids.length; i++) {
+            const p = lm[ids[i]];
+            x += 1 - p.x;
+            y += p.y;
+          }
+          x /= ids.length;
+          y /= ids.length;
+          return normToPlaneWorld(x, y, 0);
+        }
+
+        function indexTipWorld(lm) {
+          const p = lm[8];
+          return normToPlaneWorld(1 - p.x, p.y, 0);
+        }
+
+        const handMotion = {
+          rightPrev: { x: 0, y: 0, z: 0, ok: false },
+          rightVel: { x: 0, y: 0, z: 0 },
+        };
+
+        function updateRightVelocity(p, dt) {
+          if (!handMotion.rightPrev.ok) {
+            handMotion.rightPrev.x = p.x;
+            handMotion.rightPrev.y = p.y;
+            handMotion.rightPrev.z = p.z;
+            handMotion.rightPrev.ok = true;
+            handMotion.rightVel.x = 0;
+            handMotion.rightVel.y = 0;
+            handMotion.rightVel.z = 0;
+            return;
+          }
+          const inv = dt > 0 ? 1 / dt : 0;
+          handMotion.rightVel.x = (p.x - handMotion.rightPrev.x) * inv;
+          handMotion.rightVel.y = (p.y - handMotion.rightPrev.y) * inv;
+          handMotion.rightVel.z = (p.z - handMotion.rightPrev.z) * inv;
+          handMotion.rightPrev.x = p.x;
+          handMotion.rightPrev.y = p.y;
+          handMotion.rightPrev.z = p.z;
+        }
+
+        async function initHands() {
+          const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+          });
+          hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6,
+          });
+
+          hands.onResults((results) => {
+            state.left = null;
+            state.right = null;
+            state.leftFingers = 0;
+            state.rightFingers = 0;
+
+            const lms = results.multiHandLandmarks || [];
+            const handed = results.multiHandedness || [];
+            for (let i = 0; i < lms.length; i++) {
+              const label = handed[i]?.label || "Right";
+              const lm = lms[i];
+              const fingers = countFingers(lm, label);
+              if (label === "Left") {
+                state.left = lm;
+                state.leftFingers = fingers;
+              } else {
+                state.right = lm;
+                state.rightFingers = fingers;
+              }
+            }
+          });
+
+          const cameraFeed = new Camera(dom.video, {
+            onFrame: async () => {
+              await hands.send({ image: dom.video });
+            },
+            width: 1280,
+            height: 720,
+          });
+
+          await dom.video.play().catch(() => {});
+          cameraFeed.start();
+          state.hasCam = true;
+          dom.perm.style.display = "none";
+        }
+
+        initHands().catch(() => {});
+
+        function resize() {
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+          renderer.setSize(w, h, false);
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+        }
+        window.addEventListener("resize", resize);
+        resize();
+
+        let lastT = performance.now();
+        let fpsS = 60;
+        let tAccum = 0;
+
+        function applyRightInteractor(dt, time) {
+          if (!state.right) return;
+          const rightOpen = state.rightFingers === 5;
+          const idx = indexTipWorld(state.right);
+          updateRightVelocity(idx, dt);
+
+          const planarRadius = 90;
+          const planarRadius2 = planarRadius * planarRadius;
+          const touchR = 22;
+          const touchR2 = touchR * touchR;
+
+          const dxv = handMotion.rightVel.x;
+          const dyv = handMotion.rightVel.y;
+          const moveMag = Math.min(1.6, Math.hypot(dxv, dyv) * 0.002);
+
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const k = i * 3;
+            const px = positions[k];
+            const py = positions[k + 1];
+            const dx = px - idx.x;
+            const dy = py - idx.y;
+            const d2 = dx * dx + dy * dy;
+
+            if (!state.nebulaActive && !state.ultimateActive) {
+              if (d2 < planarRadius2) {
+                const d = Math.sqrt(d2) + 0.0001;
+                const f = (1 - d / planarRadius) * 1400;
+                velocities[k] += (dx / d) * f * dt;
+                velocities[k + 1] += (dy / d) * f * dt;
+              }
+              if (d2 < touchR2) {
+                const scatter = 2100;
+                velocities[k] += (Math.random() * 2 - 1) * scatter * dt;
+                velocities[k + 1] += (Math.random() * 2 - 1) * scatter * dt;
+              }
+            } else if (state.nebulaActive && !state.ultimateActive) {
+              const rippleR = 150;
+              const rippleR2 = rippleR * rippleR;
+              if (d2 < rippleR2) {
+                const d = Math.sqrt(d2) + 0.0001;
+                const phase = d * 0.09 - time * 7.0;
+                const ripple = Math.sin(phase) * 360 * moveMag * (1 - d / rippleR);
+                velocities[k + 2] += ripple * dt;
+              }
+            }
+          }
+        }
+
+        function updateCommandMode() {
+          const leftOk = !!state.left;
+          const rightOk = !!state.right;
+          dom.lhs.textContent = leftOk ? String(state.leftFingers) : "OFF";
+          dom.rhs.textContent = rightOk ? String(state.rightFingers) : "OFF";
+
+          const leftOpen = state.leftFingers === 5;
+          const rightOpen = state.rightFingers === 5;
+
+          state.catchActive = leftOpen && leftOk;
+          if (state.catchActive && !state.ultimateActive && !state.nebulaActive) dom.mode.textContent = "CATCH";
+          if (!state.catchActive && !state.ultimateActive && !state.nebulaActive) dom.mode.textContent = "TEXT";
+
+          if (!state.ultimateActive) {
+            if (leftOk && !leftOpen) {
+              if (state.leftFingers === 1 && state.shapeText !== "Hello") setModeText("Hello", neon.blue, "HELLO");
+              if (state.leftFingers === 2 && state.shapeText !== "Gemini3") setModeText("Gemini3", neon.yellow, "GEMINI3");
+              if (state.leftFingers === 3 && state.shapeText !== "非常好用") setModeText("非常好用", neon.pink, "CN-USEFUL");
+              if (state.leftFingers === 4 && state.shapeText !== "再见") setModeText("再见", neon.green, "CN-BYE");
+            }
+          }
+
+          if (rightOk) {
+            if (rightOpen && !state.nebulaActive && !state.ultimateActive) enterNebula();
+            if (!rightOpen && state.nebulaActive && !state.ultimateActive) exitNebula();
+          } else {
+            if (state.nebulaActive && !state.ultimateActive) exitNebula();
+          }
+
+          const shouldUltimate = rightOk && leftOk && rightOpen && leftOpen;
+          if (shouldUltimate && !state.ultimateActive) enterUltimate();
+          if (!shouldUltimate && state.ultimateActive) exitUltimate();
+        }
+
+        function applyCatchAttraction(dt) {
+          if (!state.catchActive || !state.left || state.nebulaActive || state.ultimateActive) return;
+          const c = palmCenterWorld(state.left);
+          const radius = 320;
+          const radius2 = radius * radius;
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const k = i * 3;
+            const dx = c.x - positions[k];
+            const dy = c.y - positions[k + 1];
+            const d2 = dx * dx + dy * dy;
+            if (d2 < radius2) {
+              const d = Math.sqrt(d2) + 0.0001;
+              const f = (1 - d / radius) * 520;
+              velocities[k] += (dx / d) * f * dt;
+              velocities[k + 1] += (dy / d) * f * dt;
+            }
+          }
+        }
+
+        function applyUltimateTargets(time) {
+          if (!state.left) return;
+          const c = palmCenterWorld(state.left);
+          const ballR = 115;
+          const ry = time * 0.9;
+          const rx = time * 0.45;
+          const cy = Math.cos(ry),
+            sy = Math.sin(ry);
+          const cx = Math.cos(rx),
+            sx = Math.sin(rx);
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const k = i * 3;
+            const bx = baseBallDirs[k];
+            const by = baseBallDirs[k + 1];
+            const bz = baseBallDirs[k + 2];
+
+            const x1 = bx * cy + bz * sy;
+            const z1 = -bx * sy + bz * cy;
+            const y1 = by;
+
+            const y2 = y1 * cx - z1 * sx;
+            const z2 = y1 * sx + z1 * cx;
+            const x2 = x1;
+
+            const phase = (i % 1024) * 0.012 + time * 22.0;
+            const bounce = Math.sin(phase) * 18.0;
+
+            targets[k] = c.x + x2 * ballR;
+            targets[k + 1] = c.y + y2 * ballR + bounce;
+            targets[k + 2] = 140 + z2 * ballR;
+          }
+        }
+
+        function integrate(dt) {
+          const damp = 0.86;
+          for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const k = i * 3;
+            const px = positions[k];
+            const py = positions[k + 1];
+            const pz = positions[k + 2];
+
+            const tx = targets[k];
+            const ty = targets[k + 1];
+            const tz = targets[k + 2];
+
+            const ax = (tx - px) * RETURN_LERP;
+            const ay = (ty - py) * RETURN_LERP;
+            const az = (tz - pz) * RETURN_LERP;
+
+            velocities[k] = velocities[k] * damp + ax;
+            velocities[k + 1] = velocities[k + 1] * damp + ay;
+            velocities[k + 2] = velocities[k + 2] * damp + az;
+
+            positions[k] = px + velocities[k] * dt * 60;
+            positions[k + 1] = py + velocities[k + 1] * dt * 60;
+            positions[k + 2] = pz + velocities[k + 2] * dt * 60;
+          }
+          geometry.attributes.position.needsUpdate = true;
+        }
+
+        function tick() {
+          const now = performance.now();
+          const dt = Math.min(0.033, (now - lastT) / 1000);
+          lastT = now;
+          const time = now / 1000;
+          material.uniforms.uTime.value = time;
+
+          updateCommandMode();
+
+          if (state.ultimateActive) applyUltimateTargets(time);
+          applyCatchAttraction(dt);
+          applyRightInteractor(dt, time);
+
+          integrate(dt);
+
+          tAccum += dt;
+          const inst = 1 / Math.max(0.0001, dt);
+          fpsS = fpsS * 0.92 + inst * 0.08;
+          if (tAccum > 0.16) {
+            dom.fps.textContent = fpsS.toFixed(0);
+            tAccum = 0;
+          }
+
+          renderer.render(scene, camera);
+          requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      })();
+    </script>
+  </body>
+</html>
+

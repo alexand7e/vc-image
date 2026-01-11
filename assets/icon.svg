@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="g" cx="50%" cy="45%" r="62%">
+      <stop offset="0%" stop-color="#00ffff" stop-opacity="0.25" />
+      <stop offset="55%" stop-color="#00ffff" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="1" />
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6" result="b" />
+      <feColorMatrix
+        in="b"
+        type="matrix"
+        values="1 0 0 0 0  0 1 0 0 1  0 0 1 0 1  0 0 0 0.7 0"
+        result="c"
+      />
+      <feMerge>
+        <feMergeNode in="c" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" fill="#000000" />
+  <circle cx="256" cy="256" r="232" fill="url(#g)" />
+  <g opacity="0.28">
+    <path d="M56 256h400" stroke="#00ffff" stroke-width="2" />
+    <path d="M256 56v400" stroke="#00ffff" stroke-width="2" />
+    <path d="M96 96l320 320" stroke="#00ffff" stroke-width="2" />
+    <path d="M416 96L96 416" stroke="#00ffff" stroke-width="2" />
+  </g>
+  <g filter="url(#glow)">
+    <circle cx="256" cy="256" r="170" fill="none" stroke="#00ffff" stroke-width="10" stroke-opacity="0.85" />
+    <circle cx="256" cy="256" r="120" fill="none" stroke="#00ffff" stroke-width="6" stroke-opacity="0.65" />
+    <path
+      d="M172 312c0-62 26-108 56-132 10-8 22-12 28-12 6 0 18 4 28 12 30 24 56 70 56 132 0 42-28 78-84 78s-84-36-84-78Z"
+      fill="none"
+      stroke="#00ffff"
+      stroke-width="8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-opacity="0.9"
+    />
+  </g>
+  <rect x="0" y="0" width="512" height="512" fill="none" stroke="#00ffff" stroke-opacity="0.15" />
+</svg>
+
